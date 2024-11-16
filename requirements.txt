@@ -1,4 +1,4 @@
 streamlit
 dnspython 
 email-validator
-
+smtplib
