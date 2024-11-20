@@ -2,29 +2,13 @@ import streamlit as st
 from email_validator import validate_email, EmailNotValidError
 import dns.resolver
 import smtplib
+import socket
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 
-# Function to check SPF and DMARC records
-def check_spf_dmarc(domain):
-    try:
-        spf_records = dns.resolver.resolve(domain, "TXT")
-        spf_valid = any("v=spf1" in str(record) for record in spf_records)
-    except Exception:
-        spf_valid = False
-
-    try:
-        dmarc_records = dns.resolver.resolve(f"_dmarc.{domain}", "TXT")
-        dmarc_valid = any("v=DMARC1" in str(record) for record in dmarc_records)
-    except Exception:
-        dmarc_valid = False
-
-    return spf_valid, dmarc_valid
-
-# Enhanced email validation
-def validate_email_address(email, blacklist, retries=3, custom_sender="test@example.com"):
-    """Robust email validation with advanced checks."""
+# Function to check email validity
+def validate_email_address(email, blacklist, custom_sender="test@example.com"):
+    """Enhanced email validation with DNS, SMTP, and blacklist checks."""
     try:
         # Step 1: Syntax validation
         validate_email(email)
@@ -47,51 +31,31 @@ def validate_email_address(email, blacklist, retries=3, custom_sender="test@exam
     except Exception as e:
         return email, "Invalid", f"DNS error: {str(e)}"
 
-    # Step 4: Check SPF and DMARC records
-    spf_valid, dmarc_valid = check_spf_dmarc(domain)
+    # Step 4: SMTP Validation
+    try:
+        mx_host = str(mx_records[0].exchange).rstrip(".")
+        smtp = smtplib.SMTP(mx_host, timeout=10)
+        smtp.helo()
+        smtp.mail(custom_sender)
+        code, _ = smtp.rcpt(email)
+        smtp.quit()
+        if code == 250:
+            return email, "Valid", "Email exists and is reachable."
+        elif code == 550:
+            return email, "Invalid", "Mailbox does not exist."
+        elif code == 451:
+            return email, "Greylisted", "Temporary error, try again later."
+        else:
+            return email, "Invalid", f"SMTP response code {code}."
+    except smtplib.SMTPConnectError:
+        return email, "Invalid", "SMTP connection failed."
+    except Exception as e:
+        return email, "Invalid", f"SMTP error: {str(e)}"
 
-    # Step 5: SMTP Validation with retries
-    mx_host = str(mx_records[0].exchange).rstrip(".")
-    smtp_response = "Unknown error"
-    for attempt in range(retries):
-        try:
-            with smtplib.SMTP(mx_host, timeout=10) as smtp:
-                smtp.helo()
-                smtp.mail(custom_sender)
-                code, _ = smtp.rcpt(email)
-                if code == 250:
-                    smtp_response = "Valid"
-                    break
-                elif code == 550:
-                    smtp_response = "Invalid: Mailbox does not exist."
-                    break
-                elif code == 451:
-                    smtp_response = "Greylisted: Temporary error, retrying..."
-                    time.sleep(5)  # Wait before retrying
-                else:
-                    smtp_response = f"Invalid: SMTP response code {code}."
-        except Exception as e:
-            smtp_response = f"SMTP error: {str(e)}"
-        if smtp_response.startswith("Valid") or "Invalid" in smtp_response:
-            break
-
-    # Consolidate results
-    if smtp_response.startswith("Valid"):
-        return email, "Valid", "Email exists and is reachable."
-    elif smtp_response.startswith("Greylisted"):
-        return email, "Greylisted", smtp_response
-    else:
-        additional_info = []
-        if not spf_valid:
-            additional_info.append("SPF not configured")
-        if not dmarc_valid:
-            additional_info.append("DMARC not configured")
-        if additional_info:
-            smtp_response += f" ({', '.join(additional_info)})"
-        return email, "Invalid", smtp_response
+    return email, "Invalid", "Unknown error."
 
 # Streamlit App
-st.title("Advanced Email Validator - Near 100% Accuracy")
+st.title("Email Validator - Maximum Efficiency")
 
 # Blacklist upload
 blacklist_file = st.file_uploader("Upload a blacklist file (optional)", type=["txt"])
@@ -107,7 +71,7 @@ if uploaded_file:
     st.write(f"Processing {len(emails)} emails...")
 
     # Process emails in chunks
-    chunk_size = 1000  # Adjust based on system capacity
+    chunk_size = 1000  # Adjust based on your system's capacity
     results = []
     progress = st.progress(0)
 
