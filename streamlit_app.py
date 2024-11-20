@@ -1,55 +1,35 @@
 import streamlit as st
-from email_validator import validate_email, EmailNotValidError
 import dns.resolver
 import smtplib
-import socket
 import pandas as pd
+from email_validator import validate_email, EmailNotValidError
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Function to check email validity
-def validate_email_address(email: str, blacklist: set, custom_sender: str = "test@example.com") -> tuple:
-    """
-    Enhanced email validation with DNS, SMTP, and blacklist checks.
-
-    Args:
-    - email (str): Email address to validate
-    - blacklist (set): Set of blacklisted domains
-    - custom_sender (str): Custom sender email (default: "test@example.com")
-
-    Returns:
-    - tuple: (email, status, message)
-    """
+def validate_email_address(email, blacklist):
     try:
-        # Step 1: Syntax validation
         v = validate_email(email)
-        email = v["email"]  # Normalize email address
+        email = v["email"]
     except EmailNotValidError as e:
-        return email, "Invalid", f"Invalid syntax: {str(e)}"
+        return email, "Invalid", str(e)
 
     domain = email.split("@")[-1]
-
-    # Step 2: Blacklist check
     if domain in blacklist:
         return email, "Blacklisted", "Domain is blacklisted."
 
-    # Step 3: DNS Validation
     try:
         mx_records = dns.resolver.resolve(domain, "MX")
         if len(mx_records) == 0:
             return email, "Invalid", "No MX records found."
     except dns.resolver.NXDOMAIN:
         return email, "Invalid", "Domain does not exist."
-    except dns.resolver.Timeout:
-        return email, "Invalid", "DNS query timed out."
     except Exception as e:
         return email, "Invalid", f"DNS error: {str(e)}"
 
-    # Step 4: SMTP Validation
     try:
         mx_host = str(mx_records[0].exchange).rstrip(".")
         smtp = smtplib.SMTP(mx_host, timeout=10)
         smtp.helo()
-        smtp.mail(custom_sender)
+        smtp.mail("test@example.com")
         code, _ = smtp.rcpt(email)
         smtp.quit()
         if code == 250:
@@ -60,56 +40,38 @@ def validate_email_address(email: str, blacklist: set, custom_sender: str = "tes
             return email, "Greylisted", "Temporary error, try again later."
         else:
             return email, "Invalid", f"SMTP response code {code}."
-    except smtplib.SMTPConnectError:
-        return email, "Invalid", "SMTP connection failed."
     except Exception as e:
         return email, "Invalid", f"SMTP error: {str(e)}"
 
-    return email, "Invalid", "Unknown error."
 
-# Streamlit App
-st.title("Email Validator - Maximum Efficiency")
+def main():
+    st.title("Email Validator")
+    blacklist_file = st.file_uploader("Upload blacklist file (optional)", type=["txt"])
+    blacklist = set()
+    if blacklist_file:
+        blacklist = {line.strip().lower() for line in blacklist_file.read().decode("utf-8").splitlines()}
 
-# Blacklist upload
-blacklist_file = st.file_uploader("Upload a blacklist file (optional)", type=["txt"])
-blacklist = set()
-if blacklist_file:
-    blacklist = set(line.strip().lower() for line in blacklist_file.read().decode("utf-8").splitlines())
-    st.write(f"Loaded {len(blacklist)} blacklisted domains.")
+    uploaded_file = st.file_uploader("Upload .txt file with emails", type=["txt"])
+    if uploaded_file:
+        emails = uploaded_file.read().decode("utf-8").splitlines()
+        st.write(f"Processing {len(emails)} emails...")
 
-# File upload
-uploaded_file = st.file_uploader("Upload a .txt file with emails", type=["txt"])
-if uploaded_file:
-    emails = uploaded_file.read().decode("utf-8").splitlines()
-    st.write(f"Processing {len(emails)} emails...")
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = [executor.submit(validate_email_address, email.strip().lower(), blacklist) for email in emails if email.strip()]
+            results = [future.result() for future in as_completed(futures)]
 
-    # Process emails in chunks
-    chunk_size = 1000  # Adjust based on your system's capacity
-    results = []
-    progress = st.progress(0)
+        df = pd.DataFrame(results, columns=["Email", "Status", "Message"])
+        st.dataframe(df)
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = []
-        for i in range(0, len(emails), chunk_size):
-            chunk = emails[i:i + chunk_size]
-            futures.extend([executor.submit(validate_email_address, email.strip().lower(), blacklist) for email in chunk if email.strip()])
+        st.write("### Summary Report")
+        st.write(f"Total Emails: {len(emails)}")
+        for status in ["Valid", "Invalid", "Greylisted", "Blacklisted"]:
+            count = df[df["Status"] == status].shape[0]
+            st.write(f"{status} Emails: {count}")
 
-        for idx, future in enumerate(as_completed(futures)):
-            results.append(future.result())
-            if idx % 100 == 0:  # Update progress every 100 emails
-                progress.progress(len(results) / len(emails))
+        csv = df.to_csv(index=False)
+        st.download_button("Download Results", data=csv, file_name="email_validation_results.csv", mime="text/csv")
 
-    # Display results
-    df = pd.DataFrame(results, columns=["Email", "Status", "Message"])
-    st.dataframe(df)
 
-    # Summary report
-    st.write("### Summary Report")
-    st.write(f"Total Emails: {len(emails)}")
-    for status in ["Valid", "Invalid", "Greylisted", "Blacklisted"]:
-        count = df[df["Status"] == status].shape[0]
-        st.write(f"{status} Emails: {count}")
-
-    # Export results
-    csv = df.to_csv(index=False)
-    st.download_button("Download Results", data=csv, file_name="email_validation_results.csv", mime="text/csv")
+if __name__ == "__main__":
+    main()
