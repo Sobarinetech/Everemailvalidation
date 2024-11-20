@@ -7,14 +7,25 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Function to check email validity
-def validate_email_address(email, blacklist, custom_sender="test@example.com"):
-    """Enhanced email validation with DNS, SMTP, and blacklist checks."""
+def validate_email_address(email: str, blacklist: set, custom_sender: str = "test@example.com") -> tuple:
+    """
+    Enhanced email validation with DNS, SMTP, and blacklist checks.
+
+    Args:
+    - email (str): Email address to validate
+    - blacklist (set): Set of blacklisted domains
+    - custom_sender (str): Custom sender email (default: "test@example.com")
+
+    Returns:
+    - tuple: (email, status, message)
+    """
     try:
         # Step 1: Syntax validation
-        validate_email(email)
+        v = validate_email(email)
+        email = v["email"]  # Normalize email address
     except EmailNotValidError as e:
         return email, "Invalid", f"Invalid syntax: {str(e)}"
-    
+
     domain = email.split("@")[-1]
 
     # Step 2: Blacklist check
@@ -24,6 +35,8 @@ def validate_email_address(email, blacklist, custom_sender="test@example.com"):
     # Step 3: DNS Validation
     try:
         mx_records = dns.resolver.resolve(domain, "MX")
+        if len(mx_records) == 0:
+            return email, "Invalid", "No MX records found."
     except dns.resolver.NXDOMAIN:
         return email, "Invalid", "Domain does not exist."
     except dns.resolver.Timeout:
@@ -61,7 +74,7 @@ st.title("Email Validator - Maximum Efficiency")
 blacklist_file = st.file_uploader("Upload a blacklist file (optional)", type=["txt"])
 blacklist = set()
 if blacklist_file:
-    blacklist = set(line.strip() for line in blacklist_file.read().decode("utf-8").splitlines())
+    blacklist = set(line.strip().lower() for line in blacklist_file.read().decode("utf-8").splitlines())
     st.write(f"Loaded {len(blacklist)} blacklisted domains.")
 
 # File upload
@@ -76,13 +89,15 @@ if uploaded_file:
     progress = st.progress(0)
 
     with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = []
         for i in range(0, len(emails), chunk_size):
             chunk = emails[i:i + chunk_size]
-            futures = [executor.submit(validate_email_address, email.strip(), blacklist) for email in chunk if email.strip()]
-            for idx, future in enumerate(as_completed(futures)):
-                results.append(future.result())
-                if idx % 100 == 0:  # Update progress every 100 emails
-                    progress.progress(len(results) / len(emails))
+            futures.extend([executor.submit(validate_email_address, email.strip().lower(), blacklist) for email in chunk if email.strip()])
+
+        for idx, future in enumerate(as_completed(futures)):
+            results.append(future.result())
+            if idx % 100 == 0:  # Update progress every 100 emails
+                progress.progress(len(results) / len(emails))
 
     # Display results
     df = pd.DataFrame(results, columns=["Email", "Status", "Message"])
