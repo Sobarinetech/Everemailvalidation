@@ -54,7 +54,14 @@ def validate_email_address(email, blacklist, custom_sender="test@example.com"):
     return email, "Invalid", "Unknown error."
 
 # Streamlit App
-st.title("Try out Inboxify Beta")
+st.title("Inboxify by EverTech")
+
+# Additional Information
+st.write("""
+**For Inboxify access, please visit [www.evertechnologies.in](http://www.evertechnologies.in)**  
+This version is created solely for **demo and testing purposes**.  
+The original application is capable of handling **50,000+ email IDs at once**.
+""")
 
 # Blacklist upload
 blacklist_file = st.file_uploader("Upload a blacklist file (optional)", type=["txt"])
