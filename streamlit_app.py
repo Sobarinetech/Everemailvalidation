@@ -2,7 +2,6 @@ import streamlit as st
 from email_validator import validate_email, EmailNotValidError
 import dns.resolver
 import smtplib
-import socket
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -68,21 +67,23 @@ if blacklist_file:
 uploaded_file = st.file_uploader("Upload a .txt file with emails", type=["txt"])
 if uploaded_file:
     emails = uploaded_file.read().decode("utf-8").splitlines()
-    st.write(f"Processing {len(emails)} emails...")
 
-    # Process emails in chunks
-    chunk_size = 1000  # Adjust based on your system's capacity
+    # Limit to 25 emails
+    if len(emails) > 25:
+        st.warning(f"Only the first 25 email addresses will be processed out of {len(emails)} uploaded.")
+        emails = emails[:25]
+    else:
+        st.write(f"Processing {len(emails)} emails...")
+
+    # Process emails
     results = []
     progress = st.progress(0)
 
     with ThreadPoolExecutor(max_workers=20) as executor:
-        for i in range(0, len(emails), chunk_size):
-            chunk = emails[i:i + chunk_size]
-            futures = [executor.submit(validate_email_address, email.strip(), blacklist) for email in chunk if email.strip()]
-            for idx, future in enumerate(as_completed(futures)):
-                results.append(future.result())
-                if idx % 100 == 0:  # Update progress every 100 emails
-                    progress.progress(len(results) / len(emails))
+        futures = [executor.submit(validate_email_address, email.strip(), blacklist) for email in emails if email.strip()]
+        for idx, future in enumerate(as_completed(futures)):
+            results.append(future.result())
+            progress.progress((idx + 1) / len(emails))
 
     # Display results
     df = pd.DataFrame(results, columns=["Email", "Status", "Message"])
@@ -90,7 +91,7 @@ if uploaded_file:
 
     # Summary report
     st.write("### Summary Report")
-    st.write(f"Total Emails: {len(emails)}")
+    st.write(f"Total Emails Processed: {len(emails)}")
     for status in ["Valid", "Invalid", "Greylisted", "Blacklisted"]:
         count = df[df["Status"] == status].shape[0]
         st.write(f"{status} Emails: {count}")
