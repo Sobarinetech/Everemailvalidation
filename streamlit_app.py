@@ -58,9 +58,7 @@ st.title("Inboxify by EverTech")
 
 # Additional Information
 st.write("""
-**For Inboxify access, please visit [Amazon Appstore](https://www.amazon.com/gp/product/B0DV3S92JY)**  
-This version is created solely for **open source basis**.  
-The original application is capable of handling **50,000+ email IDs at once**.
+**For Inboxify Mobile App please visit [Amazon Appstore](https://www.amazon.com/gp/product/B0DV3S92JY)** 
 """)
 
 # Blacklist upload
@@ -75,18 +73,13 @@ uploaded_file = st.file_uploader("Upload a .txt file with emails", type=["txt"])
 if uploaded_file:
     emails = uploaded_file.read().decode("utf-8").splitlines()
 
-    # Limit to 25 emails
-    if len(emails) > 25:
-        st.warning(f"Only the first 25 email addresses will be processed out of {len(emails)} uploaded.")
-        emails = emails[:25]
-    else:
-        st.write(f"Processing {len(emails)} emails...")
+    st.write(f"Processing {len(emails)} emails...")
 
     # Process emails
     results = []
     progress = st.progress(0)
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=50) as executor:  # Increase max workers to handle more emails
         futures = [executor.submit(validate_email_address, email.strip(), blacklist) for email in emails if email.strip()]
         for idx, future in enumerate(as_completed(futures)):
             results.append(future.result())
