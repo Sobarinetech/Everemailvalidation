@@ -70,7 +70,15 @@ if blacklist_file:
     blacklist = set(line.strip() for line in blacklist_file.read().decode("utf-8").splitlines())
     st.write(f"Loaded {len(blacklist)} blacklisted domains.")
 
-# File upload
+# Single email validation
+st.write("### Single Email Validation")
+single_email = st.text_input("Enter an email address to validate:")
+if single_email:
+    email, status, message = validate_email_address(single_email.strip(), blacklist)
+    st.write(f"Email: {email}, Status: {status}, Message: {message}")
+
+# Bulk email validation
+st.write("### Bulk Email Validation")
 uploaded_file = st.file_uploader("Upload a .txt file with emails", type=["txt"])
 if uploaded_file:
     emails = uploaded_file.read().decode("utf-8").splitlines()
