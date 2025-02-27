@@ -71,9 +71,18 @@ if blacklist_file:
 # Single email validation
 st.write("### Single Email Validation")
 single_email = st.text_input("Enter an email address to validate:")
+
 if single_email:
-    email, status, message = validate_email_address(single_email.strip(), blacklist)
-    st.write(f"Email: {email}, Status: {status}, Message: {message}")
+    with st.spinner("Validating email..."):
+        email, status, message = validate_email_address(single_email.strip(), blacklist)
+        st.write(f"Email: {email}, Status: {status}, Message: {message}")
+        # Add icon feedback
+        if status == "Valid":
+            st.success("Valid email!")
+        elif status == "Invalid":
+            st.error("Invalid email!")
+        elif status == "Blacklisted":
+            st.warning("Blacklisted domain!")
 
 # Bulk email validation
 st.write("### Bulk Email Validation")
@@ -94,12 +103,14 @@ if uploaded_file:
 
     with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(validate_email_address, email.strip(), blacklist) for email in emails if email.strip()]
+        
         for idx, future in enumerate(as_completed(futures)):
             results.append(future.result())
             progress.progress((idx + 1) / len(emails))
 
     # Display results
     df = pd.DataFrame(results, columns=["Email", "Status", "Message"])
+
     st.dataframe(df)
 
     # Summary report
