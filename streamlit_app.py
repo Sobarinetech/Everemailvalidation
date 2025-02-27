@@ -70,7 +70,7 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Additional Information
 st.write("""
-**For downloading source code and self hosting, please visit [Amazon Appstore](https://www.amazon.com/gp/product/B0DV3S92JY)**  
+**For downloading source code and self hosting, please visit [Amazon Appstore](https://dhruvbansal8.gumroad.com/l/kweja)**  
 """)
 
 # Blacklist upload
